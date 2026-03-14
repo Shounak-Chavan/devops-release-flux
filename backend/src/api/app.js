@@ -4,6 +4,7 @@ import helmet from 'helmet';
 
 import authROutes from '../modules/auth/auth.routes.js';
 import projectRoutes from '../modules/projects/projects.routes.js';
+import flagRoutes from '../modules/flags/flags.routes.js';
 
 /**
  * Initializes and configures the Express application.
@@ -27,6 +28,7 @@ const configureApp = () => {
     // Decoupled domain routes will be mounted here later
     app.use('/api/v1/auth', authROutes);
     app.use('/api/v1/projects', projectRoutes);
+    app.use('/api/v1/flags', flagRoutes);
 
     return app;
 };
