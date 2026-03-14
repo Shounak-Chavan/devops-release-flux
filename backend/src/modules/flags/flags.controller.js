@@ -1,3 +1,4 @@
+import { queue } from '../../config/queue.js';
 import { redis } from '../../config/redis.js';
 import { supabase } from '../../config/supabase.js';
 
@@ -199,5 +200,115 @@ export const removeTargetingRule = async (req, res) => {
         res.status(200).json({ message: 'Targeting rule removed successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to remove targeting rule.' });
+    }
+};
+
+
+/**
+ * Reverts a feature flag to its previous state using the most recent audit log entry.
+ * @async
+ * @function rollbackFlag
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ */
+export const rollbackFlag = async (req, res) => {
+    try {
+        const { flagId } = req.params;
+        const userId = req.user.id;
+
+        // 1. Fetch the most recent audit log entry for this flag
+        const { data: latestLog, error: logError } = await supabase
+            .from('audit_logs')
+            .select('*')
+            .eq('flag_id', flagId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (logError || !latestLog) {
+            return res.status(404).json({ error: 'No audit history found to rollback.' });
+        }
+
+        if (!latestLog.previous_state || latestLog.previous_state.status === undefined) {
+            return res.status(400).json({ error: 'Cannot rollback: previous state is unknown.' });
+        }
+
+        const targetStatus = latestLog.previous_state.status;
+
+        // 2. Fetch the project_id for cache invalidation
+        const { data: flag, error: flagError } = await supabase
+            .from('feature_flags')
+            .select('project_id, status')
+            .eq('id', flagId)
+            .single();
+
+        if (flagError || !flag) return res.status(404).json({ error: 'Flag not found.' });
+
+        if (flag.status === targetStatus) {
+            return res.status(400).json({ message: 'Flag is already in the target state.' });
+        }
+
+        // 3. Update the flag back to its previous state
+        const { data: updatedFlag, error: updateError } = await supabase
+            .from('feature_flags')
+            .update({ status: targetStatus, updated_at: new Date().toISOString() })
+            .eq('id', flagId)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+
+        // 4. Write a new entry to the Audit Log marking this as a ROLLBACK
+        await supabase.from('audit_logs').insert([{
+            flag_id: flagId,
+            user_id: userId,
+            action: 'ROLLBACK',
+            previous_state: { status: flag.status },
+            new_state: { status: targetStatus }
+        }]);
+
+        // 5. Invalidate the Redis Cache and Broadcast the Update
+        const cacheKey = `project_flags_rules:${flag.project_id}`;
+        await redis.del(cacheKey);
+        await broadcastFlagUpdate(flag.project_id);
+
+        res.status(200).json({ message: 'Rollback successful', data: updatedFlag });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Failed to rollback flag.' });
+    }
+};
+
+/**
+ * Schedules a flag to toggle at a specific future date and time.
+ * @async
+ * @function scheduleFlagToggle
+ */
+export const scheduleFlagToggle = async (req, res) => {
+    try {
+        const { flagId } = req.params;
+        const { targetStatus, scheduledTime } = req.body; // scheduledTime should be an ISO string
+        const userId = req.user.id;
+
+        if (typeof targetStatus !== 'boolean' || !scheduledTime) {
+            return res.status(400).json({ error: 'targetStatus (boolean) and scheduledTime (ISO string) are required.' });
+        }
+
+        const date = new Date(scheduledTime);
+        if (date <= new Date()) {
+            return res.status(400).json({ error: 'Scheduled time must be in the future.' });
+        }
+
+        // Send the job to pg-boss with the startAfter configuration
+        const jobId = await queue.send('toggle-flag', 
+            { flagId, targetStatus, userId }, 
+            { startAfter: date }
+        );
+
+        res.status(202).json({ 
+            message: `Flag toggle scheduled successfully for ${date.toLocaleString()}`, 
+            jobId 
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Failed to schedule flag.' });
     }
 };

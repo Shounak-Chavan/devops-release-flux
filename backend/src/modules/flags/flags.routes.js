@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createFlag, getFlagsByProject, toggleFlag } from './flags.controller.js';
+import { addTargetingRule, createFlag, getFlagsByProject, removeTargetingRule, rollbackFlag, scheduleFlagToggle, toggleFlag } from './flags.controller.js';
 import { requireAuth } from '../../shared/middlewares/requireAuth.js';
 
 const router = Router();
@@ -36,5 +36,17 @@ router.post('/:flagId/rules', addTargetingRule);
  * @description Remove a targeting rule
  */
 router.delete('/:flagId/rules/:ruleId', removeTargetingRule);
+
+/**
+ * @route POST /api/v1/flags/:flagId/rollback
+ * @description Undo the last change made to a flag and record the rollback
+ */
+router.post('/:flagId/rollback', rollbackFlag);
+
+/**
+ * @route POST /api/v1/flags/:flagId/schedule
+ * @description Schedule a flag to automatically turn ON or OFF at a future time
+ */
+router.post('/:flagId/schedule', scheduleFlagToggle);
 
 export default router;

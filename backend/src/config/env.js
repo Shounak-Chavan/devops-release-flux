@@ -18,5 +18,6 @@ export const config = {
     SUPABASE_URL: process.env.SUPABASE_URL || '',
     SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
     REDIS_URL: process.env.UPSTASH_REDIS_REST_URL || '',      
-    REDIS_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || ''  
+    REDIS_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || '' ,
+    DATABASE_URL: process.env.DATABASE_URL || '' 
 };
