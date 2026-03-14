@@ -25,4 +25,16 @@ router.get('/project/:projectId', getFlagsByProject);
  */
 router.patch('/:flagId/toggle', toggleFlag);
 
+/**
+ * @route POST /api/v1/flags/:flagId/rules
+ * @description Add a targeting rule (e.g., city EQUALS Mumbai) to a flag
+ */
+router.post('/:flagId/rules', addTargetingRule);
+
+/**
+ * @route DELETE /api/v1/flags/:flagId/rules/:ruleId
+ * @description Remove a targeting rule
+ */
+router.delete('/:flagId/rules/:ruleId', removeTargetingRule);
+
 export default router;
