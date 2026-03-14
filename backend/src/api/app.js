@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 
+import authROutes from '../modules/auth/auth.routes.js';
+import projectRoutes from '../modules/projects/projects.routes.js';
+
 /**
  * Initializes and configures the Express application.
  * Sets up global middleware including CORS, security headers, and JSON parsing.
@@ -22,7 +25,8 @@ const configureApp = () => {
     });
 
     // Decoupled domain routes will be mounted here later
-    // e.g., app.use('/api/v1/flags', flagRoutes);
+    app.use('/api/v1/auth', authROutes);
+    app.use('/api/v1/projects', projectRoutes);
 
     return app;
 };
