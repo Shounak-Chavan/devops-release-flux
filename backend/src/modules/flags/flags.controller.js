@@ -1,3 +1,4 @@
+import { redis } from '../../config/redis.js';
 import { supabase } from '../../config/supabase.js';
 
 /**
@@ -85,6 +86,9 @@ export const toggleFlag = async (req, res) => {
             .single();
 
         if (updateError) throw updateError;
+
+        const cacheKey = `project_flags:${currentFlag.project_id}`;
+        await redis.del(cacheKey);
 
         // 3. Write to the Audit Log
         const { error: auditError } = await supabase
