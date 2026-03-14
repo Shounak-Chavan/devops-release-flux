@@ -16,5 +16,7 @@ export const config = {
     PORT: process.env.PORT || 8000,
     NODE_ENV: process.env.NODE_ENV || 'development',
     SUPABASE_URL: process.env.SUPABASE_URL || '',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || ''
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
+    REDIS_URL: process.env.UPSTASH_REDIS_REST_URL || '',      
+    REDIS_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || ''  
 };
