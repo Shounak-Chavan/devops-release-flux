@@ -54,6 +54,15 @@ export const evaluateFlagsForContext = async (req, res) => {
             return acc;
         }, {});
 
+        // Fire and forget the Redis increment so it doesn't slow down the response
+        try {
+            const currentMonth = new Date().toISOString().slice(0, 7); // Gets 'YYYY-MM'
+            const usageKey = `usage:${projectId}:${currentMonth}`;
+            await redis.incr(usageKey);
+        } catch (trackerError) {
+            console.error(`Failed to track usage for project ${projectId}:`, trackerError.message);
+        }
+
         res.status(200).json({ data: evaluatedFlags });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to evaluate flags.' });

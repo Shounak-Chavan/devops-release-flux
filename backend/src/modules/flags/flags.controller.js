@@ -1,6 +1,7 @@
 import { queue } from '../../config/queue.js';
 import { redis } from '../../config/redis.js';
 import { supabase } from '../../config/supabase.js';
+import { sendEmailNotification } from '../../shared/utils/mailer.js';
 
 /**
  * Creates a new feature flag under a specific project.
@@ -105,7 +106,15 @@ export const toggleFlag = async (req, res) => {
                 new_state: { status: newState }
             }]);
 
-        if (auditError) console.error('Audit Log Error:', auditError); // Log it, but don't fail the request
+        if (auditError) console.error('Audit Log Error:', auditError); 
+
+        // Send email notification
+        const userEmail = req.user.email;
+        await sendEmailNotification(
+            userEmail,
+            `Flag Toggled: ${currentFlag.name}`,
+            `<p>Your feature flag <strong>${currentFlag.name}</strong> was manually toggled to <strong>${newState ? 'ON' : 'OFF'}</strong>.</p>`
+        );
 
         res.status(200).json({ message: `Flag ${actionText}`, data: updatedFlag });
     } catch (error) {
@@ -272,6 +281,14 @@ export const rollbackFlag = async (req, res) => {
         await redis.del(cacheKey);
         await broadcastFlagUpdate(flag.project_id);
 
+        // Send email notification
+        const userEmail = req.user.email;
+        await sendEmailNotification(
+            userEmail,
+            `Rollback Performed`,
+            `<p>A rollback was performed. A flag was restored to <strong>${targetStatus ? 'ON' : 'OFF'}</strong>.</p>`
+        );
+
         res.status(200).json({ message: 'Rollback successful', data: updatedFlag });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to rollback flag.' });
@@ -299,8 +316,9 @@ export const scheduleFlagToggle = async (req, res) => {
         }
 
         // Send the job to pg-boss with the startAfter configuration
+        const userEmail = req.user.email;
         const jobId = await queue.send('toggle-flag', 
-            { flagId, targetStatus, userId }, 
+            { flagId, targetStatus, userId , userEmail }, 
             { startAfter: date }
         );
 
