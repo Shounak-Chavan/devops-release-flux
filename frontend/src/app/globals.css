@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 5%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217 19% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 19% 15%;
+    --muted-foreground: 215 16% 62%;
+    --accent: 258 89% 66%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 215 19% 17%;
+    --input: 215 19% 17%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+    --chart-1: 221 83% 53%;
+    --chart-2: 258 89% 66%;
+    --chart-3: 142 71% 45%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 0 84% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+}
+
+.glass-card {
+  @apply bg-card/60 backdrop-blur-xl border border-white/[0.05] shadow-2xl;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom Table Styles */
+.feature-table thead tr {
+  @apply bg-card border-b border-white/[0.05];
+}
+
+.feature-table tbody tr {
+  @apply border-b border-white/[0.02] hover:bg-white/[0.02] transition-colors;
+}
+
+/* Typography Overrides */
+h1 { @apply text-[32px] font-bold tracking-tight; }
+h2 { @apply text-[24px] font-semibold tracking-tight; }
+h3 { @apply text-[20px] font-semibold; }
+p { @apply text-[16px]; }
+.text-small { @apply text-[14px]; }
