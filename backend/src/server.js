@@ -1,5 +1,8 @@
 import configureApp from './api/app.js';
 import { config } from './config/env.js';
+import { startQueue } from './config/queue.js';
+import { testRedisConnection } from './config/redis.js';
+import { registerFlagWorker } from './workers/flagWorker.js';
 
 const app = configureApp();
 
@@ -8,9 +11,15 @@ const app = configureApp();
  * * @function startServer
  * @returns {void}
  */
-const startServer = () => {
+const startServer = async () => {
+
+    await testRedisConnection();
+
+    await startQueue();
+    await registerFlagWorker();
+
     app.listen(config.PORT, () => {
-        console.log(`🚀 Server is running on http://localhost:${config.PORT} in ${config.NODE_ENV} mode.`);
+        console.log(` Server is running on http://localhost:${config.PORT} in ${config.NODE_ENV} mode.`);
     });
 };
 
