@@ -2,6 +2,7 @@ import { queue } from '../../config/queue.js';
 import { redis } from '../../config/redis.js';
 import { supabase } from '../../config/supabase.js';
 import { sendEmailNotification } from '../../shared/utils/mailer.js';
+import { broadcastFlagUpdate } from "../../shared/utils/realtime.js";
 
 /**
  * Creates a new feature flag under a specific project.
@@ -116,7 +117,7 @@ export const toggleFlag = async (req, res) => {
             `<p>Your feature flag <strong>${currentFlag.name}</strong> was manually toggled to <strong>${newState ? 'ON' : 'OFF'}</strong>.</p>`
         );
 
-        res.status(200).json({ message: `Flag ${actionText}`, data: updatedFlag });
+        res.status(200).json({ message: `Flag ${actionText}`, updatedFlag });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to toggle flag.' });
     }
@@ -328,5 +329,58 @@ export const scheduleFlagToggle = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to schedule flag.' });
+    }
+};
+
+/**
+ * Retrieves a single feature flag and its targeting rules.
+ * @async
+ * @function getFlagById
+ */
+export const getFlagById = async (req, res) => {
+    try {
+        const { flagId } = req.params;
+
+        const { data, error } = await supabase
+            .from('feature_flags')
+            .select(`
+                *,
+                targeting_rules (*)
+            `)
+            .eq('id', flagId)
+            .single();
+
+        if (error || !data) {
+            return res.status(404).json({ error: 'Feature flag not found.' });
+        }
+
+        res.status(200).json({ data });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Failed to fetch flag details.' });
+    }
+};
+
+
+/**
+ * Retrieves the audit log history for a specific feature flag.
+ * @async
+ * @function getFlagAuditLogs
+ */
+export const getFlagAuditLogs = async (req, res) => {
+    try {
+        const { flagId } = req.params;
+
+        const { data, error } = await supabase
+            .from('audit_logs')
+            // FIX: Removed the broken join to the auth schema
+            .select('*') 
+            .eq('flag_id', flagId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        res.status(200).json({ data });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Failed to fetch audit logs.' });
     }
 };
