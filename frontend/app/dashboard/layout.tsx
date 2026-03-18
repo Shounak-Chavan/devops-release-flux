@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, FolderKanban, Flag, Settings, LogOut } from "lucide-react";
-import AuthGuard from "../../src/features/auth/components/AuthGuard";
-import { useAuthStore } from "../../src/store/authStore";
+import AuthGuard from "../../features/auth/components/AuthGuard";
+import { useAuthStore } from "../../store/authStore";
+import ProjectSelector from "../../features/project/components/ProjectSelector";
 
 const navigation = [
   { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -66,6 +67,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <h1 className="text-xl font-semibold text-gray-900">
               {navigation.find((n) => n.href === pathname)?.name || "Dashboard"}
             </h1>
+            <div className="h-6 w-px bg-gray-200 hidden sm:block"></div>
+              <div className="hidden sm:block">
+                <ProjectSelector />
+              </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">{user?.email}</span>
               <button
