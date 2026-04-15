@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createProject, getProjects } from './projects.controller.js';
+import { createProject, deleteProject, getProjects, rotateApiKey } from './projects.controller.js';
 import { requireAuth } from '../../shared/middlewares/requireAuth.js';
 
 const router = Router();
@@ -18,5 +18,17 @@ router.post('/', createProject);
  * @description Get all projects for the logged-in user
  */
 router.get('/', getProjects);
+
+/**
+ * @route DELETE /api/v1/projects/:projectId
+ * @description Permanently delete a project and all associated data
+ */
+router.delete('/:projectId', deleteProject);
+
+/**
+ * @route PATCH /api/v1/projects/:projectId/rotate-key
+ * @description Generate a new API key for the project, invalidating the old one
+ */
+router.patch('/:projectId/rotate-key', rotateApiKey);
 
 export default router;

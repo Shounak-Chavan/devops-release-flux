@@ -75,3 +75,20 @@ export const rollbackFlag = async (flagId: string) => {
   const response = await api.post(`/flags/${flagId}/rollback`);
   return response.data.data;
 };
+
+export const scheduleFlag = async (data: {
+  flagId: string;
+  targetStatus: boolean;
+  scheduledTime: string; // ISO date string
+}) => {
+  const response = await api.post(`/flags/${data.flagId}/schedule`, {
+    targetStatus: data.targetStatus,
+    scheduledTime: data.scheduledTime,
+  });
+  return response.data;
+};
+
+export const deleteFlag = async (flagId: string) => {
+  const response = await api.delete(`/flags/${flagId}`);
+  return response.data;
+};

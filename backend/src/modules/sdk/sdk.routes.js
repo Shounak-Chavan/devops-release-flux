@@ -1,16 +1,24 @@
 import { Router } from 'express';
-import { evaluateFlagsForContext } from './sdk.controller.js';
+import { fetchRuleset, streamRuleset } from './sdk.controller.js';
 import { requireApiKey } from '../../shared/middlewares/requireApiKey.js';
+import { sdkLimiter } from '../../shared/middlewares/rateLimiter.js';
 
 const router = Router();
 
+router.use(sdkLimiter);
 // Secure SDK routes with API Key authentication
 router.use(requireApiKey);
 
 /**
- * @route POST /api/v1/sdk/evaluate
- * @description Evaluate all flags for the authenticated project using the provided user context
+ * @route GET /api/v1/sdk/ruleset
+ * @description Fetches the complete hashed ruleset for local SDK evaluation.
  */
-router.post('/evaluate', evaluateFlagsForContext);
+router.get('/ruleset', fetchRuleset);
+
+/**
+ * @route GET /api/v1/sdk/stream
+ * @description Opens a persistent Server-Sent Events (SSE) connection for real-time updates.
+ */
+router.get('/stream', streamRuleset);
 
 export default router;

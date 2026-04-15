@@ -1,31 +1,39 @@
 import { supabase } from '../../config/supabase.js';
 import { redis } from '../../config/redis.js';
-import { evaluateRules } from './rulesEngine.js';
+import { addClient, removeClient } from '../../shared/utils/sse.js';
 
 /**
- * High-performance endpoint for the SDK to evaluate flags against a user context.
- * Implements Cache-Aside pattern fetching both flags and rules to meet sub-500ms requirements.
- * @async
- * @function evaluateFlagsForContext
- * @param {import('express').Request} req - Express request object containing user context in the body.
- * @param {import('express').Response} res - Express response object.
+ * Utility function to pause execution for a given number of milliseconds.
+ * @param {number} ms - Milliseconds to sleep.
+ * @returns {Promise<void>}
  */
-export const evaluateFlagsForContext = async (req, res) => {
-    try {
-        const projectId = req.projectId; // Attached by requireApiKey middleware
-        const context = req.body.context || {}; // e.g., { userId: 'user_123', city: 'Mumbai' }
-        const cacheKey = `project_flags_rules:${projectId}`;
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        let flagsData;
-        
-        // 1. Check Redis Cache First
-        const cachedData = await redis.get(cacheKey);
-        
-        if (cachedData) {
-            // Upstash returns parsed JSON automatically, but we ensure it's handled correctly
-            flagsData = typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
-        } else {
-            // 2. Cache Miss: Fetch Flags AND Targeting Rules from Supabase
+/**
+ * Helper function to fetch the complete ruleset for a project.
+ * Implements Cache-Aside pattern WITH a Redis Lock to prevent Cache Stampedes.
+ * @async
+ * @param {string} projectId - The authenticated project ID.
+ * @returns {Promise<Array>} The array of flags and their targeting rules.
+ */
+export const getEnvironmentRuleset = async (projectId) => {
+    const cacheKey = `project_flags_rules:${projectId}`;
+    const lockKey = `lock:project_flags_rules:${projectId}`;
+
+    // 1. Check Redis Cache First (Fastest Path)
+    let cachedData = await redis.get(cacheKey);
+    if (cachedData) {
+        return typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
+    }
+
+    // 2. Cache Miss: Attempt to acquire an exclusive lock
+    // 'nx: true' means "Set only if it doesn't exist". 
+    // 'ex: 10' sets a 10-second safety expiration so the lock doesn't get stuck forever if the server crashes.
+    const acquiredLock = await redis.set(lockKey, 'LOCKED','NX', 'EX', 10);
+
+    if (acquiredLock) {
+        try {
+            // 3. Lock Acquired: We are the designated worker to fetch from Supabase
             const { data, error } = await supabase
                 .from('feature_flags')
                 .select(`
@@ -35,36 +43,86 @@ export const evaluateFlagsForContext = async (req, res) => {
                 .eq('project_id', projectId);
 
             if (error) throw error;
-            flagsData = data;
+
+            // 4. Save fresh data to Cache (expires in 1 hour)
+            await redis.set(cacheKey, JSON.stringify(data), 'EX' , 3600);
             
-            // 3. Save to Redis Cache (expire after 1 hour)
-            await redis.set(cacheKey, JSON.stringify(flagsData), { ex: 3600 });
+            return data;
+        } finally {
+            // 5. CRITICAL: Always release the lock so future cache misses can execute safely
+            await redis.del(lockKey);
         }
+    } else {
+        // 6. Lock NOT Acquired: Another request is currently querying Supabase.
+        // Instead of querying the DB, we poll the cache every 50ms until the other worker finishes.
+        let retries = 0;
+        const maxRetries = 10; // Max wait time: 10 * 50ms = 500ms
 
-        // 4. Evaluate each flag against the provided user context
-        const evaluatedFlags = flagsData.reduce((acc, flag) => {
-            // If the base status is OFF on the dashboard, it is OFF for everyone
-            if (!flag.status) {
-                acc[flag.name] = false;
-            } else {
-                // If ON, pass it through the Rules Engine
-                const isTargeted = evaluateRules(context, flag.targeting_rules, flag.id);
-                acc[flag.name] = isTargeted;
+        while (retries < maxRetries) {
+            await sleep(50);
+            
+            cachedData = await redis.get(cacheKey);
+            if (cachedData) {
+                return typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
             }
-            return acc;
-        }, {});
-
-        // Fire and forget the Redis increment so it doesn't slow down the response
-        try {
-            const currentMonth = new Date().toISOString().slice(0, 7); // Gets 'YYYY-MM'
-            const usageKey = `usage:${projectId}:${currentMonth}`;
-            await redis.incr(usageKey);
-        } catch (trackerError) {
-            console.error(`Failed to track usage for project ${projectId}:`, trackerError.message);
+            
+            retries++;
         }
 
-        res.status(200).json({ data: evaluatedFlags });
-    } catch (error) {
-        res.status(500).json({ error: error.message || 'Failed to evaluate flags.' });
+        // 7. Safety Fallback: If polling times out, throw an error
+        throw new Error('Timeout waiting for ruleset cache to populate.');
     }
+};
+
+/**
+ * REST Endpoint: Serves the complete ruleset to the SDK for local evaluation.
+ * @async
+ * @function fetchRuleset
+ */
+export const fetchRuleset = async (req, res) => {
+    try {
+        // FIXED: Using req.project.id
+        const projectId = req.project.id; 
+        const ruleset = await getEnvironmentRuleset(projectId);
+
+        res.set('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+        
+        res.status(200).json({ data: ruleset });
+    } catch (error) {
+        // FIXED: Using req.project?.id
+        console.error(`[SDK] Failed to fetch ruleset for ${req.project?.id}:`, error);
+        res.status(500).json({ error: 'Failed to fetch environment ruleset.' });
+    }
+};
+
+/**
+ * SSE Endpoint: Establishes a persistent connection to stream ruleset updates.
+ * @async
+ * @function streamRuleset
+ */
+export const streamRuleset = async (req, res) => {
+    // FIXED: Using req.project.id
+    const projectId = req.project.id;
+
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no' 
+    });
+
+    res.write('event: ping\ndata: "connected"\n\n');
+
+    try {
+        const initialRuleset = await getEnvironmentRuleset(projectId);
+        res.write(`data: ${JSON.stringify({ type: 'RULESET_SYNC', data: initialRuleset })}\n\n`);
+    } catch (error) {
+        console.error(`[SSE] Initial sync failed for ${projectId}:`, error);
+    }
+
+    addClient(projectId, res);
+
+    req.on('close', () => {
+        removeClient(projectId, res);
+    });
 };

@@ -1,33 +1,24 @@
-import { Redis } from '@upstash/redis';
-import { config } from './env.js';
+import { Redis } from 'ioredis'; // (Or your Upstash Redis client)
 
-if (!config.REDIS_URL || !config.REDIS_TOKEN) {
-    console.warn(' Redis credentials are missing. Caching will not work.');
-}
+// Use your existing Upstash Redis URL from your .env file
+const upstashUrl = process.env.UPSTASH_REDIS_URL; 
 
-/**
- * The initialized Upstash Redis client instance.
- * Used for high-speed caching of feature flag evaluations.
- * * @constant
- * @type {import('@upstash/redis').Redis}
- */
-export const redis = new Redis({
-    url: config.REDIS_URL,
-    token: config.REDIS_TOKEN,
-});
+// 1. The main client for Cache-Aside logic and Publishing
+export const redis = new Redis(upstashUrl);
 
-/**
- * Helper function to test the Redis connection on startup.
- * * @async
- * @function testRedisConnection
- * @returns {Promise<void>}
- */
+// 2. The dedicated client strictly for Subscribing (SSE)
+export const redisSubscriber = new Redis(upstashUrl);
+
+// Optional: Add error logging
+redis.on('error', (err) => console.error('Redis Client Error', err));
+redisSubscriber.on('error', (err) => console.error('Redis Subscriber Error', err));
+
+// 3. The connection tester used in server.js
 export const testRedisConnection = async () => {
     try {
-        await redis.set('health_check', 'Redis is working!');
-        const val = await redis.get('health_check');
-        console.log(` Redis client initialized successfully: ${val}`);
+        await redis.ping();
+        console.log('✅ Connected to Upstash Redis');
     } catch (error) {
-        console.error(' Failed to connect to Redis:', error.message);
+        console.error('❌ Upstash Redis connection failed:', error.message);
     }
 };

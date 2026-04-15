@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { supabase } from './supabase';
+import { useAuthStore } from '@/store/authStore'; 
 
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
@@ -8,9 +8,10 @@ export const api = axios.create({
   },
 });
 
-// Automatically attach the Supabase JWT token to every request
-api.interceptors.request.use(async (config) => {
-  const { data: { session } } = await supabase.auth.getSession();
+// INSTANT synchronous token injection (No disk reads!)
+api.interceptors.request.use((config) => {
+  // Read directly from the Zustand memory state
+  const session = useAuthStore.getState().session;
   
   if (session?.access_token) {
     config.headers.Authorization = `Bearer ${session.access_token}`;

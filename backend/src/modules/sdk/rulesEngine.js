@@ -24,9 +24,19 @@ export const evaluateRules = (context, rules, flagId) => {
         switch (rule.operator.toUpperCase()) {
             case 'EQUALS':
                 return String(userValue).toLowerCase() === String(rule.value).toLowerCase();
+            case 'NOT_EQUALS':
+                return String(userValue).toLowerCase() !== String(rule.value).toLowerCase();
             case 'CONTAINS':
                 return String(userValue).toLowerCase().includes(String(rule.value).toLowerCase());
-            // You can easily extend this with 'GREATER_THAN', 'IN', etc., later
+            case 'GREATER_THAN':
+                return Number(userValue) > Number(rule.value);
+            case 'LESS_THAN':
+                return Number(userValue) < Number(rule.value);
+            case 'IN': {
+                // rule.value should be a comma-separated list, e.g. "premium,enterprise"
+                const allowedValues = String(rule.value).split(',').map(v => v.trim().toLowerCase());
+                return allowedValues.includes(String(userValue).toLowerCase());
+            }
             default:
                 return false;
         }

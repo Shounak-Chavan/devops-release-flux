@@ -1,33 +1,60 @@
 "use client";
 
+/**
+ * @file app/dashboard/projects/page.tsx
+ * @description The Projects management page.
+ * Lists all projects owned by the authenticated user and provides
+ * a modal to create new projects. Each project card shows the API key.
+ */
+
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Key, Loader2, FolderKanban } from "lucide-react";
-import { getProjects, createProject } from "../../../features/project/api/index";
+import { Plus, Key, Loader2, FolderKanban, X, Copy, CheckCircle2 } from "lucide-react";
+import { getProjects, createProject } from "@/features/project/api/index";
+import { useProjectStore } from "@/store/projectStore";
+import { toast } from "sonner";
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
+  const { setActiveProject } = useProjectStore();
+
+  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
 
-  // Fetch Projects
+  // Copied key tracking per project
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Fetch all projects
   const { data: projects, isLoading } = useQuery({
     queryKey: ["projects"],
     queryFn: getProjects,
   });
 
-  // Create Project Mutation
+  // Create project mutation
   const createMutation = useMutation({
     mutationFn: createProject,
-    onSuccess: () => {
-      // Instantly refresh the list after creating a project
+    onSuccess: (newProject) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      // Auto-select the newly created project
+      setActiveProject(newProject);
+      toast.success(`Project "${newProject.name}" created and selected.`);
       setIsModalOpen(false);
       setNewProjectName("");
       setNewProjectDesc("");
     },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to create project.");
+    },
   });
+
+  /** Copies a project API key to clipboard. */
+  const handleCopyKey = (projectId: string, apiKey: string) => {
+    navigator.clipboard.writeText(apiKey);
+    setCopiedId(projectId);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,94 +65,209 @@ export default function ProjectsPage() {
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--primary)" }} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-6 animate-fade-in-up">
+      {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Your Projects</h2>
-          <p className="text-sm text-gray-500">Manage your environments and API keys.</p>
+          <h2 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
+            Your Projects
+          </h2>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
+            Manage your environments and their API keys.
+          </p>
         </div>
         <button
+          id="create-project-btn"
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          className="btn-primary"
         >
           <Plus className="h-4 w-4" /> New Project
         </button>
       </div>
 
-      {/* Projects Grid */}
+      {/* Projects grid */}
       {projects?.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center">
-          <FolderKanban className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-4 text-sm font-medium text-gray-900">No projects found</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by creating a new project.</p>
+        <div
+          className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-20 text-center"
+          style={{ borderColor: "var(--border-default)" }}
+        >
+          <div
+            className="flex h-16 w-16 items-center justify-center rounded-2xl mb-4"
+            style={{ background: "var(--bg-elevated)" }}
+          >
+            <FolderKanban className="h-7 w-7" style={{ color: "var(--text-muted)" }} />
+          </div>
+          <h3 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+            No projects yet
+          </h3>
+          <p className="text-sm max-w-xs" style={{ color: "var(--text-secondary)" }}>
+            Create your first project to get a unique API key and start managing flags.
+          </p>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {projects?.map((project) => (
-            <div key={project.id} className="flex flex-col rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
-              <p className="mt-1 flex-1 text-sm text-gray-500">{project.description || "No description provided."}</p>
-              
-              <div className="mt-6 rounded-md bg-gray-50 p-3 border border-gray-100">
-                <div className="flex items-center gap-2 text-xs font-medium text-gray-500 mb-1">
+            <div key={project.id} className="card p-6 flex flex-col gap-4">
+              {/* Project name + select button */}
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>
+                    {project.name}
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    {project.description || "No description"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveProject(project)}
+                  className="text-xs font-medium px-2.5 py-1 rounded-full transition-colors"
+                  style={{
+                    background: "var(--primary-muted)",
+                    color: "var(--primary)",
+                    border: "1px solid rgba(99,102,241,0.2)",
+                  }}
+                >
+                  Select
+                </button>
+              </div>
+
+              {/* API Key display */}
+              <div
+                className="rounded-lg p-3"
+                style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}
+              >
+                <div
+                  className="flex items-center gap-1.5 text-xs font-medium mb-1.5"
+                  style={{ color: "var(--text-muted)" }}
+                >
                   <Key className="h-3 w-3" /> API Key
                 </div>
-                <code className="block truncate text-xs text-gray-900 font-mono">
-                  {project.api_key}
-                </code>
+                <div className="flex items-center gap-2">
+                  <code
+                    className="flex-1 truncate text-xs font-mono"
+                    style={{ color: "var(--code-text)" }}
+                  >
+                    {project.api_key}
+                  </code>
+                  <button
+                    onClick={() => handleCopyKey(project.id, project.api_key)}
+                    className="flex-shrink-0 flex h-6 w-6 items-center justify-center rounded transition-colors"
+                    style={{ color: copiedId === project.id ? "var(--status-success)" : "var(--text-muted)" }}
+                    aria-label="Copy API key"
+                  >
+                    {copiedId === project.id ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
+
+              {/* Created date */}
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Created {new Date(project.created_at).toLocaleDateString()}
+              </p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Create Modal */}
+      {/* Create project modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Project</h3>
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-project-modal-title"
+        >
+          <div className="modal-content">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3
+                  id="create-project-modal-title"
+                  className="text-lg font-bold"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Create New Project
+                </h3>
+                <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                  A unique API key will be generated automatically.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg"
+                style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}
+                aria-label="Close modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                <label
+                  htmlFor="project-name"
+                  className="block text-sm font-medium mb-1.5"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Project Name *
+                </label>
                 <input
+                  id="project-name"
                   type="text"
                   required
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="input"
                   placeholder="e.g., Production Environment"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+                <label
+                  htmlFor="project-desc"
+                  className="block text-sm font-medium mb-1.5"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Description{" "}
+                  <span style={{ color: "var(--text-muted)" }}>(optional)</span>
+                </label>
                 <textarea
+                  id="project-desc"
                   value={newProjectDesc}
                   onChange={(e) => setNewProjectDesc(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
+                  className="input resize-none"
                   rows={3}
+                  placeholder="What is this project for?"
                 />
               </div>
-              <div className="flex justify-end gap-3 mt-6">
+
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                  className="btn-ghost"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-400"
+                  id="create-project-submit-btn"
+                  className="btn-primary"
                 >
-                  {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  {createMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
                   Create Project
                 </button>
               </div>

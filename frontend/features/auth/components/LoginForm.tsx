@@ -1,18 +1,35 @@
 "use client";
 
+/**
+ * @file LoginForm.tsx
+ * @description The login form component styled with the FeatureFlow Obsidian Dark design system.
+ * Uses Supabase Auth directly on the client (best practice — keeps auth logic in one layer)
+ * and the Zustand auth store's onAuthStateChange listener picks up the new session automatically.
+ */
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock, Loader2 } from "lucide-react";
-import { supabase } from "../../../config/supabase";
+import { Mail, Lock, Loader2, Eye, EyeOff, Zap } from "lucide-react";
+import { supabase } from "@/config/supabase";
 
+/**
+ * LoginForm — Renders an email/password login form.
+ * On success, the router pushes to /dashboard; the Zustand authStore
+ * picks up the session change via its onAuthStateChange listener.
+ */
 export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  /**
+   * Handles form submission.
+   * Calls supabase.auth.signInWithPassword and navigates on success.
+   */
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -27,72 +44,134 @@ export default function LoginForm() {
       setError(signInError.message);
       setIsLoading(false);
     } else {
-      // The Zustand store will automatically pick up the session change!
-      router.push("/dashboard"); 
+      // The Zustand authStore will automatically pick up the new session
+      router.push("/dashboard");
     }
   };
 
   return (
-    <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg ring-1 ring-gray-200">
+    <div
+      className="w-full max-w-md rounded-2xl p-8"
+      style={{
+        background: "var(--card-bg)",
+        border: "1px solid var(--card-border)",
+        boxShadow: "var(--card-shadow)",
+      }}
+    >
+      {/* Logo + Header */}
       <div className="mb-8 text-center">
-        <h2 className="text-2xl font-bold text-gray-900">Welcome Back</h2>
-        <p className="text-sm text-gray-500">Sign in to manage your feature flags.</p>
+        <div className="flex justify-center mb-4">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-xl"
+            style={{
+              background: "var(--primary)",
+              boxShadow: "0 0 24px var(--primary-glow)",
+            }}
+          >
+            <Zap className="h-6 w-6 text-white" strokeWidth={2.5} />
+          </div>
+        </div>
+        <h2
+          className="text-2xl font-bold tracking-tight"
+          style={{ color: "var(--text-primary)" }}
+        >
+          Welcome back
+        </h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+          Sign in to manage your feature flags.
+        </p>
       </div>
 
       <form onSubmit={handleLogin} className="space-y-5">
-        {error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 border border-red-200">
-            {error}
-          </div>
-        )}
+        {/* Error message */}
+        {error && <div className="alert-error">{error}</div>}
 
+        {/* Email field */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Email Address</label>
+          <label
+            htmlFor="login-email"
+            className="block text-sm font-medium mb-1.5"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Email Address
+          </label>
           <div className="relative">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <Mail className="h-5 w-5 text-gray-400" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Mail className="h-4 w-4" style={{ color: "var(--text-muted)" }} />
             </div>
             <input
+              id="login-email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
+              className="input pl-10"
               placeholder="you@company.com"
             />
           </div>
         </div>
 
+        {/* Password field */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Password</label>
+          <label
+            htmlFor="login-password"
+            className="block text-sm font-medium mb-1.5"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Password
+          </label>
           <div className="relative">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <Lock className="h-5 w-5 text-gray-400" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Lock className="h-4 w-4" style={{ color: "var(--text-muted)" }} />
             </div>
             <input
-              type="password"
+              id="login-password"
+              type={showPassword ? "text" : "password"}
               required
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
+              className="input pl-10 pr-10"
               placeholder="••••••••"
             />
+            {/* Toggle password visibility */}
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 flex items-center pr-3.5"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" style={{ color: "var(--text-muted)" }} />
+              ) : (
+                <Eye className="h-4 w-4" style={{ color: "var(--text-muted)" }} />
+              )}
+            </button>
           </div>
         </div>
 
+        {/* Submit button */}
         <button
           type="submit"
           disabled={isLoading}
-          className="flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-blue-400"
+          id="login-submit-btn"
+          className="btn-primary w-full py-2.5 rounded-lg"
+          style={{ fontSize: "15px" }}
         >
           {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Sign In"}
         </button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-gray-600">
-        Don't have an account?{" "}
-        <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-500">
-          Sign up
+      {/* Signup link */}
+      <p className="mt-6 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+        Don&apos;t have an account?{" "}
+        <Link
+          href="/signup"
+          className="font-semibold transition-colors"
+          style={{ color: "var(--primary)" }}
+        >
+          Sign up for free
         </Link>
       </p>
     </div>

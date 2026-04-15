@@ -1,16 +1,20 @@
 import { Router } from 'express';
-import { getProjectUsage } from './usage.controller.js';
+import {  getProjectUsageSummary, trackUsage } from './usage.controller.js';
+import { requireApiKey } from '../../shared/middlewares/requireApiKey.js';
 import { requireAuth } from '../../shared/middlewares/requireAuth.js';
 
 const router = Router();
 
-// Secure routes so only the project owner can view their usage
-router.use(requireAuth);
-
 /**
- * @route GET /api/v1/usage/project/:projectId
- * @description Get the live SDK evaluation count for the current billing month
+ * @route   POST /api/v1/usage/track
+ * @desc    Receives batched evaluation counts from the Client SDK.
+ * @access  Public (Requires Client or Server API Key)
  */
-router.get('/project/:projectId', getProjectUsage);
+router.post('/track', requireApiKey, trackUsage);
+
+
+// Endpoint for the Next.js Dashboard to fetch analytics
+router.get('/project/:projectId', requireAuth, getProjectUsageSummary);
+
 
 export default router;

@@ -2,11 +2,39 @@ import { queue } from '../../config/queue.js';
 import { redis } from '../../config/redis.js';
 import { supabase } from '../../config/supabase.js';
 import { sendEmailNotification } from '../../shared/utils/mailer.js';
-import { broadcastFlagUpdate } from "../../shared/utils/realtime.js";
+import { getEnvironmentRuleset } from '../sdk/sdk.controller.js';
+
+
+/**
+ * Helper to invalidate cache, fetch fresh rules, and push to connected SDKs via SSE.
+ * Implements Stale-While-Revalidate pattern to prevent cache stampedes.
+ */
+export const pushRulesetUpdate = async (projectId) => {
+    try {
+        // 1. CRITICAL: Invalidate the old cache!
+        await redis.del(`project_flags_rules:${projectId}`);
+
+        // 2. Fetch the newly updated ruleset (this will repopulate the cache)
+        const freshRuleset = await getEnvironmentRuleset(projectId);
+
+        // 3. Format exactly as the React SDK expects
+        const payload = JSON.stringify({
+            type: 'RULESET_UPDATED',
+            data: freshRuleset
+        });
+
+        // 4. Publish to the Redis channel
+        await redis.publish(`project_updates:${projectId}`, payload);
+        
+        console.log(`[Pub/Sub] Broadcasted ruleset update for project: ${projectId}`);
+    } catch (error) {
+        console.error(`[Pub/Sub] Failed to push update for ${projectId}:`, error);
+    }
+};
 
 /**
  * Creates a new feature flag under a specific project.
- * @asyncg
+ * @async
  * @function createFlag
  * @param {import('express').Request} req - Express request object.
  * @param {import('express').Response} res - Express response object.
@@ -64,7 +92,9 @@ export const getFlagsByProject = async (req, res) => {
 export const toggleFlag = async (req, res) => {
     try {
         const { flagId } = req.params;
-        const userId = req.user.id; // From requireAuth middleware
+        const userId = req.user.id;
+        
+        console.log("pass1");
 
         // 1. Fetch the current flag state
         const { data: currentFlag, error: fetchError } = await supabase
@@ -76,6 +106,8 @@ export const toggleFlag = async (req, res) => {
         if (fetchError || !currentFlag) {
             return res.status(404).json({ error: 'Feature flag not found.' });
         }
+
+        console.log("pass2");
 
         const newState = !currentFlag.status;
         const actionText = newState ? 'TOGGLED_ON' : 'TOGGLED_OFF';
@@ -90,11 +122,10 @@ export const toggleFlag = async (req, res) => {
 
         if (updateError) throw updateError;
 
-        const cacheKey = `project_flags_rules:${currentFlag.project_id}`;
-        await redis.del(cacheKey);
+        console.log("pass3");
 
-        // Broadcast the real-time event to connected SDKs
-        await broadcastFlagUpdate(currentFlag.project_id);
+        // FIX: Use updatedFlag.project_id instead of flag.project_id
+        await pushRulesetUpdate(updatedFlag.project_id);
 
         // 3. Write to the Audit Log
         const { error: auditError } = await supabase
@@ -109,6 +140,8 @@ export const toggleFlag = async (req, res) => {
 
         if (auditError) console.error('Audit Log Error:', auditError); 
 
+        console.log("pass4");
+
         // Send email notification
         const userEmail = req.user.email;
         await sendEmailNotification(
@@ -117,8 +150,11 @@ export const toggleFlag = async (req, res) => {
             `<p>Your feature flag <strong>${currentFlag.name}</strong> was manually toggled to <strong>${newState ? 'ON' : 'OFF'}</strong>.</p>`
         );
 
+        console.log("pass5");
+
         res.status(200).json({ message: `Flag ${actionText}`, updatedFlag });
     } catch (error) {
+        console.error("Toggle Flag Error:", error);
         res.status(500).json({ error: error.message || 'Failed to toggle flag.' });
     }
 };
@@ -161,12 +197,8 @@ export const addTargetingRule = async (req, res) => {
 
         if (ruleError) throw ruleError;
 
-        // 3. Invalidate Redis Cache so the SDK fetches the new rules instantly
-        const cacheKey = `project_flags_rules:${flag.project_id}`;
-        await redis.del(cacheKey);
+        await pushRulesetUpdate(flag.project_id);
 
-        // Broadcast the real-time event
-        await broadcastFlagUpdate(flag.project_id);
 
         res.status(201).json({ message: 'Targeting rule added successfully', data: rule });
     } catch (error) {
@@ -200,12 +232,8 @@ export const removeTargetingRule = async (req, res) => {
 
         if (deleteError) throw deleteError;
 
-        // 3. Invalidate Redis Cache
-        const cacheKey = `project_flags_rules:${flag.project_id}`;
-        await redis.del(cacheKey);
+        await pushRulesetUpdate(flag.project_id);
 
-        // Broadcast the real-time event
-        await broadcastFlagUpdate(flag.project_id);
 
         res.status(200).json({ message: 'Targeting rule removed successfully' });
     } catch (error) {
@@ -277,10 +305,8 @@ export const rollbackFlag = async (req, res) => {
             new_state: { status: targetStatus }
         }]);
 
-        // 5. Invalidate the Redis Cache and Broadcast the Update
-        const cacheKey = `project_flags_rules:${flag.project_id}`;
-        await redis.del(cacheKey);
-        await broadcastFlagUpdate(flag.project_id);
+
+        await pushRulesetUpdate(flag.project_id);
 
         // Send email notification
         const userEmail = req.user.email;
@@ -360,6 +386,45 @@ export const getFlagById = async (req, res) => {
     }
 };
 
+
+/**
+ * Permanently deletes a feature flag and all its associated targeting rules and audit logs.
+ * @async
+ * @function deleteFlag
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ */
+export const deleteFlag = async (req, res) => {
+    try {
+        const { flagId } = req.params;
+
+        // 1. Fetch the flag to get project_id for cache invalidation
+        const { data: flag, error: fetchError } = await supabase
+            .from('feature_flags')
+            .select('project_id, name')
+            .eq('id', flagId)
+            .single();
+
+        if (fetchError || !flag) {
+            return res.status(404).json({ error: 'Feature flag not found.' });
+        }
+
+        // 2. Delete the flag (targeting_rules and audit_logs cascade via DB foreign keys)
+        const { error: deleteError } = await supabase
+            .from('feature_flags')
+            .delete()
+            .eq('id', flagId);
+
+        if (deleteError) throw deleteError;
+
+        // 3. Invalidate Redis cache and invalidate the API key cache for the project
+        await pushRulesetUpdate(flag.project_id);
+
+        res.status(200).json({ message: `Flag "${flag.name}" deleted successfully.` });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Failed to delete flag.' });
+    }
+};
 
 /**
  * Retrieves the audit log history for a specific feature flag.

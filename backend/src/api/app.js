@@ -1,8 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { config } from '../config/env.js';
 
-import authROutes from '../modules/auth/auth.routes.js';
 import projectRoutes from '../modules/projects/projects.routes.js';
 import flagRoutes from '../modules/flags/flags.routes.js';
 import sdkRoutes from '../modules/sdk/sdk.routes.js';
@@ -19,7 +19,11 @@ const configureApp = () => {
 
     // Global Middleware
     app.use(helmet()); 
-    app.use(cors()); 
+    app.use(cors({
+    origin: '*', // Allows any frontend to connect (crucial for an SDK backend)
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
     app.use(express.json()); 
 
     // Health Check Endpoint
@@ -28,7 +32,6 @@ const configureApp = () => {
     });
 
     // Decoupled domain routes will be mounted here later
-    app.use('/api/v1/auth', authROutes);
     app.use('/api/v1/projects', projectRoutes);
     app.use('/api/v1/flags', flagRoutes);
     app.use('/api/v1/sdk', sdkRoutes);

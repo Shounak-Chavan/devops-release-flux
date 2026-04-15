@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { addTargetingRule, createFlag, getFlagAuditLogs, getFlagById, getFlagsByProject, removeTargetingRule, rollbackFlag, scheduleFlagToggle, toggleFlag } from './flags.controller.js';
+import { addTargetingRule, createFlag, deleteFlag, getFlagAuditLogs, getFlagById, getFlagsByProject, removeTargetingRule, rollbackFlag, scheduleFlagToggle, toggleFlag } from './flags.controller.js';
 import { requireAuth } from '../../shared/middlewares/requireAuth.js';
 
 const router = Router();
@@ -60,5 +60,11 @@ router.get('/:flagId', getFlagById);
  * @description Get the audit history for a flag
  */
 router.get('/:flagId/logs', getFlagAuditLogs);
+
+/**
+ * @route DELETE /api/v1/flags/:flagId
+ * @description Permanently delete a feature flag and all its rules/logs
+ */
+router.delete('/:flagId', deleteFlag);
 
 export default router;
